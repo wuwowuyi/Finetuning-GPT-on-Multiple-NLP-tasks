@@ -24,16 +24,15 @@ def pad(ids):
 for split, f in zip(("train", "val"), (train_file, val_file)):
     df = pd.read_csv(f, sep=r'\t', header=0, index_col=0, dtype=object)
     token_lists = enc.encode_ordinary_batch(df["sentence"])
-    labels = enc.encode_ordinary_batch(df["sentiment"])
     X = np.stack(
         [pad(tokens + q) for tokens in token_lists]
     ).astype(np.uint16)
     if split == "train":
+        labels = enc.encode_ordinary_batch(df["sentiment"])
         Y = np.stack(
             [pad(tokens[1:] + q + label) for tokens, label in zip(token_lists, labels)]
         ).astype(np.uint16)
     else:
-        df['sentiment'].astype(int)
         Y = np.asarray(df['sentiment'], dtype=np.uint16)
         # store the position of the last non-pad token. max position is block_size - 1
         pos = np.asarray([min(len(tokens) + len(q), block_size) - 1 for tokens in token_lists], dtype=np.uint16)
