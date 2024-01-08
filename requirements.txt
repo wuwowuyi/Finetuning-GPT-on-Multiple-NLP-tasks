@@ -3,3 +3,4 @@ numpy
 transformers
 tiktoken
 tqdm
+pandas
