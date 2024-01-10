@@ -35,6 +35,11 @@ epochs = 10
 output_ckpt = 'ckpt.pt'
 num_classes = 5  # sst has 5 classes: negative 0, somewhat negative 1, neutral 2, somewhat positive 3, positive 4
 
+# wandb logging
+wandb_log = False
+wandb_project = 'gpt2-finetune-sst'
+wandb_run_name = 'gpt2-sst' + str(time.time())  # 'run' + str(time.time())
+
 # model
 n_layer = 12
 n_head = 12
@@ -167,6 +172,9 @@ def estimate_loss():
     model.train()
     return out
 
+if wandb_log and master_process:
+    import wandb
+    wandb.init(project=wandb_project, name=wandb_run_name, config=config)
 
 # training loop
 X, Y, P = get_batch('train')  # fetch the very first batch
@@ -185,6 +193,14 @@ while True:
     if iter_num % eval_interval == 0 and master_process:
         losses = estimate_loss()
         print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
+        if wandb_log:
+            wandb.log({
+                "iter": iter_num,
+                "train/loss": losses['train'],
+                "val/loss": losses['val'],
+                "lr": lr,
+                "mfu": running_mfu*100, # convert to percentage
+            })
         if losses['val'] < best_val_loss or always_save_checkpoint:
             best_val_loss = losses['val']
             if iter_num > 0:
