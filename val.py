@@ -1,7 +1,3 @@
-"""
-Adapted from nanoGPT's sample.py
-"""
-
 import os
 from contextlib import nullcontext
 
@@ -20,7 +16,7 @@ compile = False # use PyTorch 2.0 to compile the model to be faster
 
 # default settings for sst
 dataset = 'sst'
-out_dir = 'out-sst' # ignored if init_from is not 'resume'
+out_dir = os.path.join('out', 'out-sst') # ignored if init_from is not 'resume'
 batch_size = 16
 num_classes = 5  # sst has 5 classes: negative 0, somewhat negative 1, neutral 2, somewhat positive 3, positive 4
 block_size = 64
@@ -37,7 +33,7 @@ ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torc
 ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
 
 # model
-if init_from == 'resume':
+if init_from == 'resume':  # init from checkpoint
     # init from a model saved in a specific directory
     ckpt_path = os.path.join(out_dir, 'ckpt.pt')
     checkpoint = torch.load(ckpt_path, map_location=device)
@@ -55,17 +51,18 @@ elif init_from.startswith('gpt2'):
 else:
     raise ValueError("init_from must be either resume or a gpt model, for example, gpt2")
 
-model.crop_block_size(block_size)
+if block_size < model.config.block_size:
+    model.crop_block_size(block_size)
 model.eval()
 model.to(device)
 if compile:
     model = torch.compile(model) # requires PyTorch 2.0 (optional)
 
 data_dir = os.path.join('data', dataset)
-X = np.fromfile(os.path.join(data_dir, 'val_x.bin'), dtype=np.uint16).reshape(-1, block_size)
-Y = np.fromfile(os.path.join(data_dir, 'val_y.bin'), dtype=np.uint16)
-pos = np.fromfile(os.path.join(data_dir, 'val_pos.bin'), dtype=np.uint16)  # position of last non-pad token
-total, total_batches = X.shape[0], X.shape[0] // batch_size
+X = np.fromfile(os.path.join(data_dir, 'test_x.bin'), dtype=np.uint16).reshape(-1, block_size)
+Y = np.fromfile(os.path.join(data_dir, 'test_y.bin'), dtype=np.uint16)
+pos = np.fromfile(os.path.join(data_dir, 'test_pos.bin'), dtype=np.uint16)  # position of last non-pad token
+total, total_batches = X.shape[0], X.shape[0] // batch_size + 1
 def get_batch(ix):
     x = torch.from_numpy(X[ix: ix + batch_size].astype(np.int32))
     y = torch.from_numpy(Y[ix: ix + batch_size].astype(np.int32))
@@ -88,8 +85,9 @@ with torch.no_grad():
         for ix in range(total_batches):
             x, y, p = get_batch(ix)
             logits, _ = model(x, last_only=False)
-            logits = logits[torch.arange(batch_size), p]  # logits for the last non-pad token
+            b = logits.shape[0]
+            logits = logits[torch.arange(b), p]  # logits for the last non-pad token
             predicts = torch.argmax(logits[:, target_tokens], dim=-1).squeeze()
-            correct += batch_size - torch.count_nonzero(predicts - y)
+            correct += b - torch.count_nonzero(predicts - y)
 
 print(f"{correct/total:.3f}")
