@@ -1,3 +1,6 @@
+"""
+Adapted from nanoGPT's train.py
+"""
 import os
 from contextlib import nullcontext
 
@@ -8,6 +11,7 @@ import torch
 from model import GPTConfig, GPT
 
 # -----------------------------------------------------------------------------
+original_model = 'gpt2'
 init_from = 'resume' # either 'resume' (from an out_dir) or a gpt2 variant (e.g. 'gpt2-xl')
 seed = 1337
 device = 'cuda' # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1', etc.
@@ -20,6 +24,7 @@ out_dir = os.path.join('out', 'out-sst') # ignored if init_from is not 'resume'
 batch_size = 16
 num_classes = 5  # sst has 5 classes: negative 0, somewhat negative 1, neutral 2, somewhat positive 3, positive 4
 block_size = 64
+ckpt_file = 'ckpt.pt'
 
 exec(open('configurator.py').read())  # overrides from command line
 # -----------------------------------------------------------------------------
@@ -35,7 +40,7 @@ ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=
 # model
 if init_from == 'resume':  # init from checkpoint
     # init from a model saved in a specific directory
-    ckpt_path = os.path.join(out_dir, 'ckpt.pt')
+    ckpt_path = os.path.join(out_dir, ckpt_file)
     checkpoint = torch.load(ckpt_path, map_location=device)
     gptconf = GPTConfig(**checkpoint['model_args'])
     model = GPT(gptconf)
@@ -63,19 +68,14 @@ X = np.fromfile(os.path.join(data_dir, 'test_x.bin'), dtype=np.uint16).reshape(-
 Y = np.fromfile(os.path.join(data_dir, 'test_y.bin'), dtype=np.uint16)
 pos = np.fromfile(os.path.join(data_dir, 'test_pos.bin'), dtype=np.uint16)  # position of last non-pad token
 total, total_batches = X.shape[0], X.shape[0] // batch_size + 1
-def get_batch(ix):
-    x = torch.from_numpy(X[ix: ix + batch_size].astype(np.int32))
-    y = torch.from_numpy(Y[ix: ix + batch_size].astype(np.int32))
-    p = torch.from_numpy(pos[ix: ix + batch_size].astype(np.int32))
-    if device_type == 'cuda':
-        # pin arrays x,y, which allows us to move them to GPU asynchronously (non_blocking=True)
-        x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
-    else:
-        x, y = x.to(device), y.to(device)
-    p = p.to(device)
+def get_batch(ix: int):
+    x = torch.as_tensor(X[ix: ix + batch_size].astype(np.int64), device=device)
+    y = torch.as_tensor(Y[ix: ix + batch_size].astype(np.int64), device=device)
+    p = torch.as_tensor(pos[ix: ix + batch_size].astype(np.int32), device=device)
     return x, y, p
 
-enc = tiktoken.get_encoding("gpt2")
+
+enc = tiktoken.get_encoding(original_model)
 target_tokens = torch.as_tensor([enc.encode(str(i))[0] for i in range(num_classes)]).to(device)
 
 # run validation

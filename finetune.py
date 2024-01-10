@@ -4,22 +4,18 @@ Adapted from nanoGPT's train.py
 
 import os
 import time
-import math
-import pickle
 from contextlib import nullcontext
 
 import numpy as np
 import torch
-from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.distributed import init_process_group, destroy_process_group
+from torch import Tensor
 
-from model import GPTConfig, GPT
+from model import GPT
 
 # -----------------------------------------------------------------------------
 
 out_dir = os.path.join('out', 'out-sst')
 eval_interval = 5
-eval_iters = 30
 log_interval = 1
 
 eval_only = False  # if True, script exits right after the first eval
@@ -34,6 +30,7 @@ dataset = 'sst'
 gradient_accumulation_steps = 32  # used to simulate larger batch sizes
 batch_size = 16  # if gradient_accumulation_steps > 1, this is the micro-batch size
 block_size = 64
+epochs = 10
 
 # model
 n_layer = 12
@@ -44,7 +41,6 @@ bias = False  # do we use bias inside LayerNorm and Linear layers?
 
 # adamw optimizer
 learning_rate = 6e-5  # max learning rate
-max_iters = 6 * 10  # total number of training iterations. roughly 10 epochs for sst
 weight_decay = 1e-1
 beta1 = 0.9
 beta2 = 0.95
@@ -86,16 +82,22 @@ Y_train = np.fromfile(os.path.join(data_dir, 'train_y.bin'), dtype=np.uint16).re
 X_val = np.fromfile(os.path.join(data_dir, 'val_x.bin'), dtype=np.uint16).reshape(-1, block_size)
 Y_val = np.fromfile(os.path.join(data_dir, 'val_y.bin'), dtype=np.uint16).reshape(-1, block_size)
 
-def get_batch(split, ix=None):
+eval_iters = int(len(X_val) // batch_size)
+max_iters = int(len(X_train) // (batch_size * gradient_accumulation_steps)) * epochs  # total number of training iterations.
+print(f"eval iters is {eval_iters}, and max_iters is {max_iters}")
+
+def get_batch(split: str, ix: Tensor=None):
     n = len(X_train) if split == 'train' else len(X_val)
-    if not ix:
+    if ix is None:  # must explicitly test None otherwise it cause error when ix is a tensor or array
         ix = torch.randint(n, (batch_size,))
+    # must use int64 otherwise it cause the following error on computing cross entropy
+    # RuntimeError: "nll_loss_forward_reduce_cuda_kernel_2d_index" not implemented for 'Int'
     if split == 'train':
-        x = torch.as_tensor(X_train[ix], torch.int32, device)
-        y = torch.as_tensor(Y_train[ix], torch.int32, device)
+        x = torch.as_tensor(X_train[ix].astype(np.int64), device=device)
+        y = torch.as_tensor(Y_train[ix].astype(np.int64), device=device)
     else:
-        x = torch.as_tensor(X_val[ix], torch.int32, device)
-        y = torch.as_tensor(Y_val[ix], torch.int32, device)
+        x = torch.as_tensor(X_val[ix].astype(np.int64), device=device)
+        y = torch.as_tensor(Y_val[ix].astype(np.int64), device=device)
     return x, y
 
 
@@ -142,7 +144,7 @@ def estimate_loss():
         losses = torch.zeros(eval_iters)
         for k in range(eval_iters):
             X, Y = get_batch(split) if split == 'train' \
-                else get_batch(split, torch.arange(k*batch_size, k*batch_size + batch_size))
+                else get_batch(split, torch.arange(k * batch_size, k * batch_size + batch_size))
             with ctx:
                 logits, loss = model(X, Y)
             losses[k] = loss.item()
