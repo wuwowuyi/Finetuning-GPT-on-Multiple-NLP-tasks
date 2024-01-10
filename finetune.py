@@ -8,7 +8,6 @@ from contextlib import nullcontext
 
 import numpy as np
 import torch
-from torch import Tensor
 
 from model import GPT
 
@@ -31,6 +30,7 @@ gradient_accumulation_steps = 32  # used to simulate larger batch sizes
 batch_size = 16  # if gradient_accumulation_steps > 1, this is the micro-batch size
 block_size = 64
 epochs = 10
+output_ckpt = 'ckpt.pt'
 
 # model
 n_layer = 12
@@ -86,7 +86,7 @@ eval_iters = int(len(X_val) // batch_size)
 max_iters = int(len(X_train) // (batch_size * gradient_accumulation_steps)) * epochs  # total number of training iterations.
 print(f"eval iters is {eval_iters}, and max_iters is {max_iters}")
 
-def get_batch(split: str, ix: Tensor=None):
+def get_batch(split: str, ix: torch.Tensor=None):
     n = len(X_train) if split == 'train' else len(X_val)
     if ix is None:  # must explicitly test None otherwise it cause error when ix is a tensor or array
         ix = torch.randint(n, (batch_size,))
@@ -182,7 +182,7 @@ while True:
                     'config': config,
                 }
                 print(f"saving checkpoint to {out_dir}")
-                torch.save(checkpoint, os.path.join(out_dir, 'ckpt.pt'))
+                torch.save(checkpoint, os.path.join(out_dir, output_ckpt))
     if iter_num == 0 and eval_only:
         break
 
