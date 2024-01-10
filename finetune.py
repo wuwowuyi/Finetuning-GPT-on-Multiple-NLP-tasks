@@ -7,7 +7,9 @@ import time
 from contextlib import nullcontext
 
 import numpy as np
+import tiktoken
 import torch
+from torch.nn import functional as F
 
 from model import GPT
 
@@ -31,6 +33,7 @@ batch_size = 16  # if gradient_accumulation_steps > 1, this is the micro-batch s
 block_size = 64
 epochs = 10
 output_ckpt = 'ckpt.pt'
+num_classes = 5  # sst has 5 classes: negative 0, somewhat negative 1, neutral 2, somewhat positive 3, positive 4
 
 # model
 n_layer = 12
@@ -79,8 +82,10 @@ ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=
 data_dir = os.path.join('data', dataset)
 X_train = np.fromfile(os.path.join(data_dir, 'train_x.bin'), dtype=np.uint16).reshape(-1, block_size)
 Y_train = np.fromfile(os.path.join(data_dir, 'train_y.bin'), dtype=np.uint16).reshape(-1, block_size)
+pos_train = np.fromfile(os.path.join(data_dir, 'train_pos.bin'), dtype=np.uint16).reshape(-1, block_size)
 X_val = np.fromfile(os.path.join(data_dir, 'val_x.bin'), dtype=np.uint16).reshape(-1, block_size)
 Y_val = np.fromfile(os.path.join(data_dir, 'val_y.bin'), dtype=np.uint16).reshape(-1, block_size)
+pos_val = np.fromfile(os.path.join(data_dir, 'val_pos.bin'), dtype=np.uint16).reshape(-1, block_size)
 
 eval_iters = int(len(X_val) // batch_size)
 max_iters = int(len(X_train) // (batch_size * gradient_accumulation_steps)) * epochs  # total number of training iterations.
@@ -95,10 +100,12 @@ def get_batch(split: str, ix: torch.Tensor=None):
     if split == 'train':
         x = torch.as_tensor(X_train[ix].astype(np.int64), device=device)
         y = torch.as_tensor(Y_train[ix].astype(np.int64), device=device)
+        p = torch.as_tensor(pos_train[ix].astype(np.int64), device=device)
     else:
         x = torch.as_tensor(X_val[ix].astype(np.int64), device=device)
         y = torch.as_tensor(Y_val[ix].astype(np.int64), device=device)
-    return x, y
+        p = torch.as_tensor(pos_val[ix].astype(np.int64), device=device)
+    return x, y, p
 
 
 # init these up here, can override if init_from='resume' (i.e. from a checkpoint)
@@ -134,6 +141,13 @@ if compile:
     unoptimized_model = model
     model = torch.compile(model)  # requires PyTorch 2.0
 
+enc = tiktoken.get_encoding('gpt2')
+target_tokens = torch.as_tensor([enc.encode(str(i))[0] for i in range(num_classes)], device=device)
+
+def compute_loss(logits, y, p):
+    b = logits.shape[0]
+    logits = logits[torch.arange(b), p][:, target_tokens]
+    return F.cross_entropy(logits, y)
 
 # helps estimate an arbitrarily accurate loss over either split using many batches
 @torch.no_grad()
@@ -143,10 +157,11 @@ def estimate_loss():
     for split in ['train', 'val']:
         losses = torch.zeros(eval_iters)
         for k in range(eval_iters):
-            X, Y = get_batch(split) if split == 'train' \
+            X, Y, P = get_batch(split) if split == 'train' \
                 else get_batch(split, torch.arange(k * batch_size, k * batch_size + batch_size))
             with ctx:
-                logits, loss = model(X, Y)
+                logits, _ = model(X, last_only=False)
+                loss = compute_loss(logits, Y, P)
             losses[k] = loss.item()
         out[split] = losses.mean()
     model.train()
@@ -154,7 +169,7 @@ def estimate_loss():
 
 
 # training loop
-X, Y = get_batch('train')  # fetch the very first batch
+X, Y, P = get_batch('train')  # fetch the very first batch
 t0 = time.time()
 local_iter_num = 0  # number of iterations in the lifetime of this process
 raw_model = model  # unwrap DDP container if needed
@@ -190,10 +205,11 @@ while True:
     # and using the GradScaler if data type is float16
     for micro_step in range(gradient_accumulation_steps):
         with ctx:
-            logits, loss = model(X, Y)
+            logits, _ = model(X, last_only=False)
+            loss = compute_loss(logits, Y, P)
             loss = loss / gradient_accumulation_steps  # scale the loss to account for gradient accumulation
         # immediately async prefetch next batch while model is doing the forward pass on the GPU
-        X, Y = get_batch('train')
+        X, Y, P = get_batch('train')
         # backward pass, with gradient scaling if training in fp16
         scaler.scale(loss).backward()
     # clip the gradient
