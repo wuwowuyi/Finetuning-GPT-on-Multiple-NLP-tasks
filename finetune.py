@@ -43,7 +43,7 @@ dropout = 0.1  # for pretraining 0 is good, for finetuning try 0.1+
 bias = False  # do we use bias inside LayerNorm and Linear layers?
 
 # adamw optimizer
-learning_rate = 6e-5  # max learning rate
+learning_rate = 3e-5  # max learning rate
 weight_decay = 1e-1
 beta1 = 0.9
 beta2 = 0.95
@@ -81,11 +81,11 @@ ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=
 
 data_dir = os.path.join('data', dataset)
 X_train = np.fromfile(os.path.join(data_dir, 'train_x.bin'), dtype=np.uint16).reshape(-1, block_size)
-Y_train = np.fromfile(os.path.join(data_dir, 'train_y.bin'), dtype=np.uint16).reshape(-1, block_size)
-pos_train = np.fromfile(os.path.join(data_dir, 'train_pos.bin'), dtype=np.uint16).reshape(-1, block_size)
+Y_train = np.fromfile(os.path.join(data_dir, 'train_y.bin'), dtype=np.uint16)
+pos_train = np.fromfile(os.path.join(data_dir, 'train_pos.bin'), dtype=np.uint16)
 X_val = np.fromfile(os.path.join(data_dir, 'val_x.bin'), dtype=np.uint16).reshape(-1, block_size)
-Y_val = np.fromfile(os.path.join(data_dir, 'val_y.bin'), dtype=np.uint16).reshape(-1, block_size)
-pos_val = np.fromfile(os.path.join(data_dir, 'val_pos.bin'), dtype=np.uint16).reshape(-1, block_size)
+Y_val = np.fromfile(os.path.join(data_dir, 'val_y.bin'), dtype=np.uint16)
+pos_val = np.fromfile(os.path.join(data_dir, 'val_pos.bin'), dtype=np.uint16)
 
 eval_iters = int(len(X_val) // batch_size)
 max_iters = int(len(X_train) // (batch_size * gradient_accumulation_steps)) * epochs  # total number of training iterations.
