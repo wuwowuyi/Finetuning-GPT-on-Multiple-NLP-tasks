@@ -11,7 +11,7 @@ import tiktoken
 import torch
 from torch.nn import functional as F
 
-from model import GPT
+from model import GPT, GPTConfig
 
 # -----------------------------------------------------------------------------
 
@@ -22,9 +22,6 @@ log_interval = 1
 eval_only = False  # if True, script exits right after the first eval
 always_save_checkpoint = False  # if True, always save a checkpoint after each eval
 init_from = 'gpt2'  # for finetuning, always init from gpt2
-
-# wandb logging
-wandb_log = False  # disabled by default
 
 # data
 dataset = 'sst'
@@ -44,11 +41,11 @@ wandb_run_name = 'gpt2-sst' + str(time.time())  # 'run' + str(time.time())
 n_layer = 12
 n_head = 12
 n_embd = 768
-dropout = 0.1  # for pretraining 0 is good, for finetuning try 0.1+
+dropout = 0.3  # for pretraining 0 is good, for finetuning try 0.1+
 bias = False  # do we use bias inside LayerNorm and Linear layers?
 
 # adamw optimizer
-learning_rate = 3e-5  # max learning rate
+learning_rate = 5e-5  # max learning rate
 weight_decay = 1e-1
 beta1 = 0.9
 beta2 = 0.95
@@ -121,13 +118,40 @@ best_val_loss = 1e9
 model_args = dict(n_layer=n_layer, n_head=n_head, n_embd=n_embd, block_size=block_size,
                   bias=bias, vocab_size=None, dropout=dropout)  # start with model_args from command line
 
-print(f"Initializing from OpenAI GPT-2 weights: {init_from}")
-# initialize from OpenAI GPT-2 weights
-override_args = dict(dropout=dropout)
-model = GPT.from_pretrained(init_from, override_args)
-# read off the created config params, so we can store them into checkpoint correctly
-for k in ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size']:
-    model_args[k] = getattr(model.config, k)
+if init_from == 'resume':
+    # resume training from a checkpoint.
+    ckpt_path = os.path.join(out_dir, output_ckpt)
+    print(f"Resuming training from {ckpt_path}")
+
+    checkpoint = torch.load(ckpt_path, map_location=device)
+    checkpoint_model_args = checkpoint['model_args']
+    # force these config attributes to be equal otherwise we can't even resume training
+    # the rest of the attributes (e.g. dropout) can stay as desired from command line
+    for k in ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size']:
+        model_args[k] = checkpoint_model_args[k]
+    # create the model
+    gptconf = GPTConfig(**model_args)
+    model = GPT(gptconf)
+
+    state_dict = checkpoint['model']
+    # fix the keys of the state dictionary :(
+    # honestly no idea how checkpoints sometimes get this prefix, have to debug more
+    unwanted_prefix = '_orig_mod.'
+    for k,v in list(state_dict.items()):
+        if k.startswith(unwanted_prefix):
+            state_dict[k[len(unwanted_prefix):]] = state_dict.pop(k)
+
+    model.load_state_dict(state_dict)
+    iter_num = checkpoint['iter_num']
+    best_val_loss = checkpoint['best_val_loss']
+else:
+    print(f"Initializing from OpenAI GPT-2 weights: {init_from}")
+    # initialize from OpenAI GPT-2 weights
+    override_args = dict(dropout=dropout)
+    model = GPT.from_pretrained(init_from, override_args)
+    # read off the created config params, so we can store them into checkpoint correctly
+    for k in ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size']:
+        model_args[k] = getattr(model.config, k)
 # crop down the model block size if desired, using model surgery
 if block_size < model.config.block_size:
     model.crop_block_size(block_size)
