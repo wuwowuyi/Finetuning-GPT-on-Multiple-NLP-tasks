@@ -23,9 +23,6 @@ eval_only = False  # if True, script exits right after the first eval
 always_save_checkpoint = False  # if True, always save a checkpoint after each eval
 init_from = 'gpt2'  # for finetuning, always init from gpt2
 
-# wandb logging
-wandb_log = False  # disabled by default
-
 # data
 dataset = 'sst'
 gradient_accumulation_steps = 32  # used to simulate larger batch sizes
