@@ -64,9 +64,9 @@ if compile:
     model = torch.compile(model) # requires PyTorch 2.0 (optional)
 
 data_dir = os.path.join('data', dataset)
-X = np.fromfile(os.path.join(data_dir, 'test_x.bin'), dtype=np.uint16).reshape(-1, block_size)
-Y = np.fromfile(os.path.join(data_dir, 'test_y.bin'), dtype=np.uint16)
-pos = np.fromfile(os.path.join(data_dir, 'test_pos.bin'), dtype=np.uint16)  # position of last non-pad token
+X = np.fromfile(os.path.join(data_dir, 'val_x.bin'), dtype=np.uint16).reshape(-1, block_size)
+Y = np.fromfile(os.path.join(data_dir, 'val_y.bin'), dtype=np.uint16)
+pos = np.fromfile(os.path.join(data_dir, 'val_pos.bin'), dtype=np.uint16)  # position of last non-pad token
 total, total_batches = X.shape[0], X.shape[0] // batch_size + 1
 def get_batch(ix: int):
     x = torch.as_tensor(X[ix: ix + batch_size].astype(np.int64), device=device)

@@ -7,9 +7,11 @@ import time
 from contextlib import nullcontext
 
 import numpy as np
+import tiktoken
 import torch
+from torch.nn import functional as F
 
-from model import GPT
+from model import GPT, GPTConfig
 
 # -----------------------------------------------------------------------------
 
@@ -31,16 +33,22 @@ batch_size = 16  # if gradient_accumulation_steps > 1, this is the micro-batch s
 block_size = 64
 epochs = 10
 output_ckpt = 'ckpt.pt'
+num_classes = 5  # sst has 5 classes: negative 0, somewhat negative 1, neutral 2, somewhat positive 3, positive 4
+
+# wandb logging
+wandb_log = False
+wandb_project = 'gpt2-finetune-sst'
+wandb_run_name = 'gpt2-sst' + str(time.time())  # 'run' + str(time.time())
 
 # model
 n_layer = 12
 n_head = 12
 n_embd = 768
-dropout = 0.1  # for pretraining 0 is good, for finetuning try 0.1+
+dropout = 0.3  # for pretraining 0 is good, for finetuning try 0.1+
 bias = False  # do we use bias inside LayerNorm and Linear layers?
 
 # adamw optimizer
-learning_rate = 6e-5  # max learning rate
+learning_rate = 5e-5  # max learning rate
 weight_decay = 1e-1
 beta1 = 0.9
 beta2 = 0.95
@@ -78,9 +86,11 @@ ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=
 
 data_dir = os.path.join('data', dataset)
 X_train = np.fromfile(os.path.join(data_dir, 'train_x.bin'), dtype=np.uint16).reshape(-1, block_size)
-Y_train = np.fromfile(os.path.join(data_dir, 'train_y.bin'), dtype=np.uint16).reshape(-1, block_size)
+Y_train = np.fromfile(os.path.join(data_dir, 'train_y.bin'), dtype=np.uint16)
+pos_train = np.fromfile(os.path.join(data_dir, 'train_pos.bin'), dtype=np.uint16)
 X_val = np.fromfile(os.path.join(data_dir, 'val_x.bin'), dtype=np.uint16).reshape(-1, block_size)
-Y_val = np.fromfile(os.path.join(data_dir, 'val_y.bin'), dtype=np.uint16).reshape(-1, block_size)
+Y_val = np.fromfile(os.path.join(data_dir, 'val_y.bin'), dtype=np.uint16)
+pos_val = np.fromfile(os.path.join(data_dir, 'val_pos.bin'), dtype=np.uint16)
 
 eval_iters = int(len(X_val) // batch_size)
 max_iters = int(len(X_train) // (batch_size * gradient_accumulation_steps)) * epochs  # total number of training iterations.
@@ -95,10 +105,12 @@ def get_batch(split: str, ix: torch.Tensor=None):
     if split == 'train':
         x = torch.as_tensor(X_train[ix].astype(np.int64), device=device)
         y = torch.as_tensor(Y_train[ix].astype(np.int64), device=device)
+        p = torch.as_tensor(pos_train[ix].astype(np.int64), device=device)
     else:
         x = torch.as_tensor(X_val[ix].astype(np.int64), device=device)
         y = torch.as_tensor(Y_val[ix].astype(np.int64), device=device)
-    return x, y
+        p = torch.as_tensor(pos_val[ix].astype(np.int64), device=device)
+    return x, y, p
 
 
 # init these up here, can override if init_from='resume' (i.e. from a checkpoint)
@@ -109,13 +121,40 @@ best_val_loss = 1e9
 model_args = dict(n_layer=n_layer, n_head=n_head, n_embd=n_embd, block_size=block_size,
                   bias=bias, vocab_size=None, dropout=dropout)  # start with model_args from command line
 
-print(f"Initializing from OpenAI GPT-2 weights: {init_from}")
-# initialize from OpenAI GPT-2 weights
-override_args = dict(dropout=dropout)
-model = GPT.from_pretrained(init_from, override_args)
-# read off the created config params, so we can store them into checkpoint correctly
-for k in ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size']:
-    model_args[k] = getattr(model.config, k)
+if init_from == 'resume':
+    # resume training from a checkpoint.
+    ckpt_path = os.path.join(out_dir, output_ckpt)
+    print(f"Resuming training from {ckpt_path}")
+
+    checkpoint = torch.load(ckpt_path, map_location=device)
+    checkpoint_model_args = checkpoint['model_args']
+    # force these config attributes to be equal otherwise we can't even resume training
+    # the rest of the attributes (e.g. dropout) can stay as desired from command line
+    for k in ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size']:
+        model_args[k] = checkpoint_model_args[k]
+    # create the model
+    gptconf = GPTConfig(**model_args)
+    model = GPT(gptconf)
+
+    state_dict = checkpoint['model']
+    # fix the keys of the state dictionary :(
+    # honestly no idea how checkpoints sometimes get this prefix, have to debug more
+    unwanted_prefix = '_orig_mod.'
+    for k,v in list(state_dict.items()):
+        if k.startswith(unwanted_prefix):
+            state_dict[k[len(unwanted_prefix):]] = state_dict.pop(k)
+
+    model.load_state_dict(state_dict)
+    iter_num = checkpoint['iter_num']
+    best_val_loss = checkpoint['best_val_loss']
+else:
+    print(f"Initializing from OpenAI GPT-2 weights: {init_from}")
+    # initialize from OpenAI GPT-2 weights
+    override_args = dict(dropout=dropout)
+    model = GPT.from_pretrained(init_from, override_args)
+    # read off the created config params, so we can store them into checkpoint correctly
+    for k in ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size']:
+        model_args[k] = getattr(model.config, k)
 # crop down the model block size if desired, using model surgery
 if block_size < model.config.block_size:
     model.crop_block_size(block_size)
@@ -134,6 +173,13 @@ if compile:
     unoptimized_model = model
     model = torch.compile(model)  # requires PyTorch 2.0
 
+enc = tiktoken.get_encoding('gpt2')
+target_tokens = torch.as_tensor([enc.encode(str(i))[0] for i in range(num_classes)], device=device)
+
+def compute_loss(logits, y, p):
+    b = logits.shape[0]
+    logits = logits[torch.arange(b), p][:, target_tokens]
+    return F.cross_entropy(logits, y)
 
 # helps estimate an arbitrarily accurate loss over either split using many batches
 @torch.no_grad()
@@ -143,18 +189,22 @@ def estimate_loss():
     for split in ['train', 'val']:
         losses = torch.zeros(eval_iters)
         for k in range(eval_iters):
-            X, Y = get_batch(split) if split == 'train' \
+            X, Y, P = get_batch(split) if split == 'train' \
                 else get_batch(split, torch.arange(k * batch_size, k * batch_size + batch_size))
             with ctx:
-                logits, loss = model(X, Y)
+                logits, _ = model(X, last_only=False)
+                loss = compute_loss(logits, Y, P)
             losses[k] = loss.item()
         out[split] = losses.mean()
     model.train()
     return out
 
+if wandb_log and master_process:
+    import wandb
+    wandb.init(project=wandb_project, name=wandb_run_name, config=config)
 
 # training loop
-X, Y = get_batch('train')  # fetch the very first batch
+X, Y, P = get_batch('train')  # fetch the very first batch
 t0 = time.time()
 local_iter_num = 0  # number of iterations in the lifetime of this process
 raw_model = model  # unwrap DDP container if needed
@@ -170,6 +220,14 @@ while True:
     if iter_num % eval_interval == 0 and master_process:
         losses = estimate_loss()
         print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
+        if wandb_log:
+            wandb.log({
+                "iter": iter_num,
+                "train/loss": losses['train'],
+                "val/loss": losses['val'],
+                "lr": lr,
+                "mfu": running_mfu*100, # convert to percentage
+            })
         if losses['val'] < best_val_loss or always_save_checkpoint:
             best_val_loss = losses['val']
             if iter_num > 0:
@@ -190,10 +248,11 @@ while True:
     # and using the GradScaler if data type is float16
     for micro_step in range(gradient_accumulation_steps):
         with ctx:
-            logits, loss = model(X, Y)
+            logits, _ = model(X, last_only=False)
+            loss = compute_loss(logits, Y, P)
             loss = loss / gradient_accumulation_steps  # scale the loss to account for gradient accumulation
         # immediately async prefetch next batch while model is doing the forward pass on the GPU
-        X, Y = get_batch('train')
+        X, Y, P = get_batch('train')
         # backward pass, with gradient scaling if training in fp16
         scaler.scale(loss).backward()
     # clip the gradient
