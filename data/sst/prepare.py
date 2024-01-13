@@ -37,7 +37,7 @@ for split, f in zip(("train", "val"), (train_file, val_file)):
     lengths = [len(tokens) for tokens in token_lists]
     print(f"{split} has {sum(lengths):,} tokens")
 
-# train has 191,641 tokens
-# val and test have 24,946 tokens
+# train has 191,641 tokens, 8,544 data points.
+# val and test have 24,946 tokens, 1101 data points
 
 
