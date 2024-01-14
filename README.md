@@ -19,6 +19,7 @@ where `3` is the label, meaning the sentiment is somewhat positive.
 There are 5 classes of sentiment, including negative 0, somewhat negative 1, neutral 2, somewhat positive 3, and positive 4.
 
 Best performance: 0.519. (project requirement 0.515)
+
 Hyperparameters:
 * learning_rate = 5e-5
 * dropout = 0.2
