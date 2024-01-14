@@ -9,7 +9,14 @@ The purpose is to practice finetuning from scratch, including data preparation, 
 
 ## SST ([Stanford Sentiment Analysis](https://nlp.stanford.edu/sentiment/treebank.html))
 Data from [Stanford CS224N 2023 default project](https://github.com/gpoesia/minbert-default-final-project)
-train data 8,544 sentences, validation 1101 sentences.
+
+Train data 8,544 sentences, validation 1101 sentences.
+
+A training data example:
+`It 's a lovely film with lovely performances by Buy and Accorsi .	3`
+where `3` is the label, meaning the sentiment is somewhat positive.
+
+There are 5 classes of sentiment, including negative 0, somewhat negative 1, neutral 2, somewhat positive 3, and positive 4.
 
 Best performance: 0.519. (project requirement 0.515)
 Hyperparameters:
