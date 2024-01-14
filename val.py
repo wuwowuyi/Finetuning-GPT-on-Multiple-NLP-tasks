@@ -67,11 +67,11 @@ data_dir = os.path.join('data', dataset)
 X = np.fromfile(os.path.join(data_dir, 'val_x.bin'), dtype=np.uint16).reshape(-1, block_size)
 Y = np.fromfile(os.path.join(data_dir, 'val_y.bin'), dtype=np.uint16)
 pos = np.fromfile(os.path.join(data_dir, 'val_pos.bin'), dtype=np.uint16)  # position of last non-pad token
-total, total_batches = X.shape[0], X.shape[0] // batch_size + 1
+total, total_batches = X.shape[0], X.shape[0] // batch_size + (1 if X.shape[0] % batch_size > 0 else 0)
 def get_batch(ix: int):
-    x = torch.as_tensor(X[ix: ix + batch_size].astype(np.int64), device=device)
-    y = torch.as_tensor(Y[ix: ix + batch_size].astype(np.int64), device=device)
-    p = torch.as_tensor(pos[ix: ix + batch_size].astype(np.int32), device=device)
+    x = torch.as_tensor(X[ix * batch_size: ix * batch_size + batch_size].astype(np.int64), device=device)
+    y = torch.as_tensor(Y[ix * batch_size: ix * batch_size + batch_size].astype(np.int64), device=device)
+    p = torch.as_tensor(pos[ix * batch_size: ix * batch_size + batch_size].astype(np.int32), device=device)
     return x, y, p
 
 
@@ -79,7 +79,7 @@ enc = tiktoken.get_encoding(original_model)
 target_tokens = torch.as_tensor([enc.encode(str(i))[0] for i in range(num_classes)]).to(device)
 
 # run validation
-correct = 0
+wrong = 0
 with torch.no_grad():
     with ctx:
         for ix in range(total_batches):
@@ -88,6 +88,6 @@ with torch.no_grad():
             b = logits.shape[0]
             logits = logits[torch.arange(b), p]  # logits for the last non-pad token
             predicts = torch.argmax(logits[:, target_tokens], dim=-1).squeeze()
-            correct += b - torch.count_nonzero(predicts - y)
+            wrong += torch.count_nonzero(predicts - y)
 
-print(f"{correct/total:.3f}")
+print(f"{ 1 - wrong/total:.3f}")
