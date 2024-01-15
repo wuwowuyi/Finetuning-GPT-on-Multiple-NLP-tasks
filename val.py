@@ -23,7 +23,7 @@ dataset = 'sst'
 out_dir = os.path.join('out', 'out-sst') # ignored if init_from is not 'resume'
 batch_size = 16
 num_classes = 5  # sst has 5 classes: negative 0, somewhat negative 1, neutral 2, somewhat positive 3, positive 4
-block_size = 64
+block_size = 96
 ckpt_file = 'ckpt.pt'
 
 exec(open('configurator.py').read())  # overrides from command line

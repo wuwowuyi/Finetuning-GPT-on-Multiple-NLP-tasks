@@ -8,13 +8,13 @@ import numpy as np
 train_file = os.path.join(os.path.dirname(__file__), 'ids-sst-train.csv')
 val_file = os.path.join(os.path.dirname(__file__), 'ids-sst-dev.csv')
 
-# each data point is in the format: <sentence> sentiment: <label> <pad_token>...
-# For example: You 'll probably love it . sentiment: 4 <|endoftext|>...
-# where <|endoftext|> is the pad token.
-block_size = 64  # longest sequence length
+# x is in the format: <sentence> <prompt> <pad_token>...
+# y is just the label
+prompt = "On a scale of 0 to 4, where 0 is negative, 2 neutral and 4 positive, rate sentence sentiment:"
+block_size = 96  # long enough to fit sentence + prompt
 enc = tiktoken.get_encoding("gpt2")
 pad_token = enc.eot_token  # pad by eot_token '<|endoftext|>'
-q = enc.encode_ordinary(' sentiment: ')
+q = enc.encode_ordinary(f' {prompt}')
 
 def pad(ids):
     if len(ids) < block_size:
