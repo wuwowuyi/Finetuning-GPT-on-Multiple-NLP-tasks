@@ -20,4 +20,3 @@ gradient_accumulation_steps = 32
 epochs = 20
 learning_rate = 5e-5
 dropout = 0.2
-
