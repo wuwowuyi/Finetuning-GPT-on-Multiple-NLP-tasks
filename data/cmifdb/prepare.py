@@ -6,17 +6,16 @@ import numpy as np
 import torch
 
 enc = tiktoken.get_encoding("gpt2")
-target_tokens = torch.as_tensor([enc.encode(str(i))[0] for i in range(5)])
+target_tokens = torch.as_tensor([enc.encode_ordinary('negative')[0], enc.encode_ordinary('positive')[0]])
 
 def run():
-    train_file = os.path.join(os.path.dirname(__file__), 'ids-sst-train.csv')
-    val_file = os.path.join(os.path.dirname(__file__), 'ids-sst-dev.csv')
+    train_file = os.path.join(os.path.dirname(__file__), 'ids-cfimdb-train.csv')
+    val_file = os.path.join(os.path.dirname(__file__), 'ids-cfimdb-dev.csv')
 
     # x is in the format: <sentence> <prompt> <pad_token>...
     # y is just the label
-    prompt = "On a scale of 0 to 4, where 0 is negative, 2 neutral and 4 positive, rate sentence sentiment:"
-    block_size = 96  # long enough to fit sentence + prompt
-    enc = tiktoken.get_encoding("gpt2")
+    prompt = "Is the sentence sentiment negative or positive:"
+    block_size = 512
     pad_token = enc.eot_token  # pad by eot_token '<|endoftext|>'
     q = enc.encode_ordinary(f' {prompt}')
 
@@ -41,8 +40,8 @@ def run():
         lengths = [len(tokens) for tokens in token_lists]
         print(f"{split} has {sum(lengths):,} tokens")
 
-# train has 191,641 tokens, 8,544 data points.
-# val and test have 24,946 tokens, 1101 data points
+# train has 371,408 tokens, 1,707 data points
+# val has 55,186 tokens, 245 data points
 
 
 if __name__ == "__main__":

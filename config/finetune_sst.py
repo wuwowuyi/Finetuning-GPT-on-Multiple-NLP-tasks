@@ -1,5 +1,9 @@
 import time
 
+from data.sst.prepare import target_tokens as tt
+
+target_tokens = tt
+
 # use default settings
 wandb_log = True
 output_ckpt = "sst-" + str(time.time())

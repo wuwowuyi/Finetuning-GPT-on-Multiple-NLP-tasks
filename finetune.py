@@ -7,7 +7,6 @@ import time
 from contextlib import nullcontext
 
 import numpy as np
-import tiktoken
 import torch
 from torch.nn import functional as F
 
@@ -23,14 +22,11 @@ eval_only = False  # if True, script exits right after the first eval
 always_save_checkpoint = False  # if True, always save a checkpoint after each eval
 init_from = 'gpt2'  # for finetuning, always init from gpt2
 
-# wandb logging
-wandb_log = False  # disabled by default
-
 # data
 dataset = 'sst'
 gradient_accumulation_steps = 32  # used to simulate larger batch sizes
 batch_size = 16  # if gradient_accumulation_steps > 1, this is the micro-batch size
-block_size = 64
+block_size = 96
 epochs = 10
 output_ckpt = 'ckpt.pt'
 num_classes = 5  # sst has 5 classes: negative 0, somewhat negative 1, neutral 2, somewhat positive 3, positive 4
@@ -60,6 +56,9 @@ decay_lr = False  # whether to decay the learning rate
 device = 'cuda'  # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1' etc., or try 'mps' on macbooks
 dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'  # 'float32', 'bfloat16', or 'float16', the latter will auto implement a GradScaler
 compile = False  # use PyTorch 2.0 to compile the model to be faster
+
+# place holder. must override in config file
+target_tokens = None
 
 # -----------------------------------------------------------------------------
 config_keys = [k for k, v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str))]
@@ -173,8 +172,7 @@ if compile:
     unoptimized_model = model
     model = torch.compile(model)  # requires PyTorch 2.0
 
-enc = tiktoken.get_encoding('gpt2')
-target_tokens = torch.as_tensor([enc.encode(str(i))[0] for i in range(num_classes)], device=device)
+target_tokens = target_tokens.to(device)
 
 def compute_loss(logits, y, p):
     b = logits.shape[0]
