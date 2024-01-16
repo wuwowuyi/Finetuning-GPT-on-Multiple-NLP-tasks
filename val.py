@@ -5,13 +5,11 @@ import os
 from contextlib import nullcontext
 
 import numpy as np
-import tiktoken
 import torch
 
 from model import GPTConfig, GPT
 
 # -----------------------------------------------------------------------------
-original_model = 'gpt2'
 init_from = 'resume' # either 'resume' (from an out_dir) or a gpt2 variant (e.g. 'gpt2-xl')
 seed = 1337
 device = 'cuda' # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1', etc.
@@ -25,6 +23,9 @@ batch_size = 16
 num_classes = 5  # sst has 5 classes: negative 0, somewhat negative 1, neutral 2, somewhat positive 3, positive 4
 block_size = 96
 ckpt_file = 'ckpt.pt'
+
+# place holder. must override in config file
+target_tokens = None
 
 exec(open('configurator.py').read())  # overrides from command line
 # -----------------------------------------------------------------------------
@@ -75,8 +76,7 @@ def get_batch(ix: int):
     return x, y, p
 
 
-enc = tiktoken.get_encoding(original_model)
-target_tokens = torch.as_tensor([enc.encode(str(i))[0] for i in range(num_classes)]).to(device)
+target_tokens = target_tokens.to(device)
 
 # run validation
 wrong = 0

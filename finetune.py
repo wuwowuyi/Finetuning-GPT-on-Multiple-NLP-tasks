@@ -7,7 +7,6 @@ import time
 from contextlib import nullcontext
 
 import numpy as np
-import tiktoken
 import torch
 from torch.nn import functional as F
 
@@ -57,6 +56,9 @@ decay_lr = False  # whether to decay the learning rate
 device = 'cuda'  # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1' etc., or try 'mps' on macbooks
 dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'  # 'float32', 'bfloat16', or 'float16', the latter will auto implement a GradScaler
 compile = False  # use PyTorch 2.0 to compile the model to be faster
+
+# place holder. must override in config file
+target_tokens = None
 
 # -----------------------------------------------------------------------------
 config_keys = [k for k, v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str))]
@@ -170,8 +172,7 @@ if compile:
     unoptimized_model = model
     model = torch.compile(model)  # requires PyTorch 2.0
 
-enc = tiktoken.get_encoding('gpt2')
-target_tokens = torch.as_tensor([enc.encode(str(i))[0] for i in range(num_classes)], device=device)
+target_tokens = target_tokens.to(device)
 
 def compute_loss(logits, y, p):
     b = logits.shape[0]

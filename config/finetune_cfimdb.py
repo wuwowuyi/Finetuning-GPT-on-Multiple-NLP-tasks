@@ -1,5 +1,8 @@
 import os
 import time
+from data.cmifdb.prepare import target_tokens as tt
+
+target_tokens = tt
 
 # use default settings
 wandb_log = True
@@ -20,3 +23,4 @@ gradient_accumulation_steps = 32
 epochs = 20
 learning_rate = 5e-5
 dropout = 0.2
+

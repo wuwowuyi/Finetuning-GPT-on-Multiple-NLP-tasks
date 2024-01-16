@@ -4,12 +4,13 @@ This project is based on [nanoGPT](https://github.com/karpathy/nanoGPT) and [Sta
 
 The [Stanford CS224N 2023 default project](https://github.com/gpoesia/minbert-default-final-project) finetunes [a Bert base model trained by Hugging face](https://huggingface.co/bert-base-uncased) which has 110M parameters. This project finetunes the nanoGPT small model which has 124M parameters.
 
-The purpose is to practice finetuning from scratch, including data preparation, loss function, training and validation scripts etc.
+The purpose is to experiment finetuning from scratch, starting from data preparation.
 
 Experiments environment is one single machine on
 * Linux-6.5.0-14-generic-x86_64-with-glibc2.35
-* Python 3.9.18
 * one NVIDIA GeForce GTX 1080
+* Python 3.9.18
+* Pytorch 2.1.2
 
 Hyperparameters:
 * learning_rate = 5e-5
@@ -17,7 +18,7 @@ Hyperparameters:
 * epochs = 20
 * gradient_accumulation_steps = 32 
 
-Block size is longer than >95% of the training sentences plus prompting question, and batch size is adjusted to fit the memory.
+Block size is longer than >95% of the training sentences plus prompting question, and batch size is adjusted to fit the GPU.
 
 
 ## SST ([Stanford Sentiment Analysis](https://nlp.stanford.edu/sentiment/treebank.html))
@@ -47,9 +48,9 @@ Data from [Stanford CS224N 2023 default project](https://github.com/gpoesia/minb
 
 Train has 1,707 sentences, and validation 245 sentences. 2 classes of sentiment, negative or positive.
 
-A training data example:
-`We know from other movies that the actors are good and they make the movie . Not at all a waste of time . The premise was not bad . One workable idea ( interaction between real bussiness men and Russian mafia ) is followed by an intelligent script	1`
-where `1` is the label, meaning the sentiment is positive.  
+Training and validation data are prepared in a similar way like SST, with the prompt "Is the sentence sentiment negative or positive:".
+When computing loss, I use the tokens of "positive" and "negative", rather than 1 and 0.
 
-Best performance 0.984. (cs224n project requirement 0.966).
+Best performance 0.988. (cs224n project baseline 0.966).
+
 
