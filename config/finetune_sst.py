@@ -15,3 +15,4 @@ epochs = 20
 batch_size = 64
 gradient_accumulation_steps = 32
 
+lam = 0.5

@@ -35,9 +35,16 @@ def run():
         Y = np.asarray(df['sentiment'], dtype=np.uint16)
         pos = np.asarray([min(len(tokens) + len(q), block_size) - 1
                           for tokens in token_lists], dtype=np.uint16)
+        Y_model = np.stack(  # for computing language model loss
+            [pad(tokens[1:] + q + enc.encode(str(label)))
+             for tokens, label in zip(token_lists, df['sentiment'])]
+        ).astype(np.uint16)
+
         X.tofile(os.path.join(os.path.dirname(__file__), f'{split}_x.bin'))
         Y.tofile(os.path.join(os.path.dirname(__file__), f'{split}_y.bin'))
         pos.tofile(os.path.join(os.path.dirname(__file__), f'{split}_pos.bin'))
+        Y_model.tofile(os.path.join(os.path.dirname(__file__), f'{split}_y_model.bin'))
+
         lengths = [len(tokens) for tokens in token_lists]
         print(f"{split} has {sum(lengths):,} tokens")
 
