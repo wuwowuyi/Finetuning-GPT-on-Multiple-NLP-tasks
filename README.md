@@ -1,14 +1,17 @@
+
+Some work from 2023.
+
 # Finetuning nanoGPT
 
 This project is based on [nanoGPT](https://github.com/karpathy/nanoGPT) and [Stanford CS224N 2023 default project](https://github.com/gpoesia/minbert-default-final-project).
 
-The [Stanford CS224N 2023 default project](https://github.com/gpoesia/minbert-default-final-project) finetunes [a Bert base model trained by Hugging face](https://huggingface.co/bert-base-uncased) which has 110M parameters. This project finetunes the nanoGPT small model which has 124M parameters.
+The [Stanford CS224N default project](https://github.com/gpoesia/minbert-default-final-project) finetunes [a Bert base model trained by Hugging face](https://huggingface.co/bert-base-uncased) which has 110M parameters. This project finetunes the nanoGPT small model which has 124M parameters.
 
 The purpose is to experiment finetuning from scratch, starting from data preparation.
 
 Experiments environment is one single machine on
 * Linux-6.5.0-14-generic-x86_64-with-glibc2.35
-* one NVIDIA GeForce GTX 1080
+* one RTX 3090
 * Python 3.9.18
 * Pytorch 2.1.2
 
